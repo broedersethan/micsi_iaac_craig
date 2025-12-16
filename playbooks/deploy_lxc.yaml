@@ -4,10 +4,10 @@
   gather_facts: false
 
   tasks:
-    - name: Obtain list of devices from NetBox
+    - name: Obtain list of Virtual Machines from NetBox
       debug:
         msg: >
-          "Device {{ item }}"
+          "Virtual Machine {{ item.value.name }} has {{ item.value.disk }} space"
       loop: "{{ query('netbox.netbox.nb_lookup', 'virtual-machines',
                       api_endpoint='http://172.18.0.7:8080/',
                       token='11604d42f0f3e6930b32711dedc1db2bb2771887') }}"
@@ -22,10 +22,13 @@
         api_token_secret: '9a73add3-9ad9-4b46-98d3-2a71dbc517de'
         api_host: 192.168.52.132
         password: 123456
-        hostname: Alpine-Test2
+        hostname: "{{ item.value.name }}"
         ostemplate: 'local:vztmpl/alpine-3.20-default_20240908_amd64.tar.xz'
         disk_volume:
           storage: local-lvm
-          size: 20
+          size: "{{ item.value.disk // 1024 }}"
       tags:
         - proxmox
+      loop: "{{ query('netbox.netbox.nb_lookup', 'virtual-machines',
+                api_endpoint='http://172.18.0.7:8080/',
+                token='11604d42f0f3e6930b32711dedc1db2bb2771887') }}"
