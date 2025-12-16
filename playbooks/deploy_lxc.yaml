@@ -4,6 +4,16 @@
   gather_facts: false
 
   tasks:
+    - name: Obtain list of devices from NetBox
+      debug:
+        msg: >
+          "Device {{ item }}"
+      loop: "{{ query('netbox.netbox.nb_lookup', 'virtual-machines',
+                      api_endpoint='http://172.18.0.7:8080/',
+                      token='11604d42f0f3e6930b32711dedc1db2bb2771887') }}"
+      tags:
+        - debug
+
     - name: Create new container with minimal options
       community.proxmox.proxmox:
         node: pve
@@ -17,3 +27,5 @@
         disk_volume:
           storage: local-lvm
           size: 20
+      tags:
+        - proxmox
