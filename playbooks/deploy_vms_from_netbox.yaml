@@ -81,6 +81,11 @@
       failed_when: false
       changed_when: false
 
+    - name: Debug - Afficher la réponse Netbox
+      debug:
+        msg: "netbox_vms_response keys: {{ netbox_vms_response.keys() | list if netbox_vms_response is defined else 'non défini' }}"
+      when: netbox_vms_response is defined
+
     - name: Afficher un message d'erreur si le tag n'existe pas
       fail:
         msg: "Le tag '{{ netbox_tag }}' n'existe pas dans Netbox. Utilisez netbox_tag: '' pour récupérer toutes les VMs ou spécifiez un tag valide."
