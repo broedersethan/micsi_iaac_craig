@@ -11,7 +11,8 @@
     
     # Configuration Netbox (à définir dans Semaphore Variable Group)
     netbox_url: "{{ netbox_url | default('https://netbox.cesi.local') }}"
-    netbox_token: "{{ netbox_token }}"
+    netbox_token: "{{ netbox_token | default('') }}"
+    netbox_ip_fallback: "{{ netbox_ip_fallback | default('10.0.20.11') }}"
     
     # Filtre Netbox (peut être passé en Survey Variables dans Semaphore)
     netbox_tag: "{{ netbox_tag | default('') | trim }}"
@@ -90,24 +91,55 @@
       set_fact:
         netbox_ip: "{{ dns_test.stdout.split()[0] | default('') }}"
       when: dns_test is defined and dns_test.rc == 0 and dns_test.stdout is defined
+
+    - name: Utiliser IP de fallback si DNS a échoué
+      set_fact:
+        netbox_ip: "{{ netbox_ip_fallback }}"
+      when: (dns_test is not defined) or (dns_test.rc != 0) or (netbox_ip is not defined or netbox_ip == '')
     # #endregion
 
     # #region agent log - Log extracted IP
-    - name: Debug - IP extraite
+    - name: Debug - IP Netbox à utiliser
       debug:
-        msg: "IP Netbox extraite: {{ netbox_ip | default('Non disponible') }}"
+        msg: "IP Netbox à utiliser: {{ netbox_ip | default('Non disponible') }}"
       when: netbox_ip is defined
+    # #endregion
+
+    # #region agent log - Construire URL Netbox avec IP si nécessaire
+    - name: Extraire le protocole et le port de l'URL Netbox
+      set_fact:
+        netbox_protocol: "{{ 'https' if 'https://' in netbox_url else 'http' }}"
+        netbox_port: "{{ netbox_url.split(':')[2].split('/')[0] if ':' in netbox_url.split('://')[1] and '/' in netbox_url.split('://')[1] else ('443' if 'https' in netbox_url else '80') }}"
+        netbox_hostname: "{{ netbox_url.split('://')[1].split(':')[0].split('/')[0] }}"
+
+    - name: Construire URL Netbox finale avec IP
+      set_fact:
+        netbox_url_final: "{{ netbox_protocol }}://{{ netbox_ip }}:{{ netbox_port }}"
+      when: netbox_ip is defined and netbox_ip != ''
+    # #endregion
+
+    # #region agent log - Log final URL
+    - name: Debug - URL Netbox finale
+      debug:
+        msg: |
+          URL Netbox originale: {{ netbox_url }}
+          Hostname: {{ netbox_hostname | default('N/A') }}
+          IP utilisée: {{ netbox_ip | default('N/A') }}
+          URL finale: {{ netbox_url_final | default(netbox_url) }}
+      when: netbox_url_final is defined or netbox_url is defined
     # #endregion
 
     - name: Récupérer les informations depuis Netbox (par nom)
       when: filter_by_name | bool
       uri:
-        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?name={{ vm_name | trim }}"
+        url: "{{ (netbox_url_final | default(netbox_url)) }}/api/virtualization/virtual-machines/?name={{ vm_name | trim }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
           Accept: "application/json"
         validate_certs: no
+        follow_redirects: all
+        timeout: 30
         status_code: [200, 400]
       register: netbox_vms_response
       failed_when: false
@@ -116,35 +148,23 @@
     - name: Récupérer les informations depuis Netbox (par tag)
       when: (not filter_by_name | bool) and (filter_by_tag | bool)
       uri:
-        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?tag={{ netbox_tag | trim }}"
+        url: "{{ (netbox_url_final | default(netbox_url)) }}/api/virtualization/virtual-machines/?tag={{ netbox_tag | trim }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
           Accept: "application/json"
         validate_certs: no
+        follow_redirects: all
+        timeout: 30
         status_code: [200, 400]
       register: netbox_vms_response
       failed_when: false
       changed_when: false
 
-    # #region agent log - Try with IP if DNS failed (Hypothesis A)
-    - name: Construire URL Netbox avec IP si DNS a échoué
-      set_fact:
-        netbox_url_final: "{{ 'https://' + netbox_ip + '/api/virtualization/virtual-machines/' if (netbox_ip is defined and netbox_ip != '') else (netbox_url + '/api/virtualization/virtual-machines/') }}"
-      when: (not filter_by_name | bool) and (not filter_by_tag | bool)
-    # #endregion
-
-    # #region agent log - Log final URL
-    - name: Debug - URL finale Netbox
-      debug:
-        msg: "URL finale Netbox: {{ netbox_url_final | default('N/A') }}"
-      when: netbox_url_final is defined
-    # #endregion
-
     - name: Récupérer toutes les VMs depuis Netbox (sans filtre)
       when: (not filter_by_name | bool) and (not filter_by_tag | bool)
       uri:
-        url: "{{ netbox_url_final | default(netbox_url + '/api/virtualization/virtual-machines/') }}"
+        url: "{{ (netbox_url_final | default(netbox_url)) }}/api/virtualization/virtual-machines/"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
@@ -189,9 +209,14 @@
         netbox_vms: []
       when: netbox_vms is not defined
 
+    - name: Vérifier que le token Netbox est défini
+      fail:
+        msg: "Le token Netbox (netbox_token) est obligatoire. Définissez-le dans Semaphore Variable Group."
+      when: netbox_token is not defined or netbox_token == ''
+
     - name: Vérifier que des VMs ont été trouvées
       fail:
-        msg: "Aucune VM trouvée dans Netbox. Vérifiez le tag ou le nom spécifié."
+        msg: "Aucune VM trouvée dans Netbox. Vérifiez le tag ou le nom spécifié, et assurez-vous que le token Netbox est valide."
       when: netbox_vms | length == 0
 
     - name: Afficher les VMs trouvées dans Netbox
