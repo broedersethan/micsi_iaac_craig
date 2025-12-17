@@ -91,8 +91,10 @@
       debug:
         msg: |
           Status: {{ netbox_vms_response.status | default('N/A') }}
+          URL: {{ netbox_vms_response.url | default('N/A') }}
+          Redirected: {{ netbox_vms_response.redirected | default('N/A') }}
+          Message: {{ netbox_vms_response.msg | default('N/A') }}
           Has json: {{ netbox_vms_response.json is defined }}
-          Response keys: {{ netbox_vms_response.keys() | list if netbox_vms_response is defined else 'non défini' }}
       when: netbox_vms_response is defined
 
     - name: Afficher un message d'erreur si le tag n'existe pas
