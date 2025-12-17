@@ -9,13 +9,13 @@
     proxmox_api_token_id: "{{ proxmox_api_token_id | default('One') }}"
     proxmox_api_token_secret: "{{ proxmox_api_token_secret }}"
     
-    # Configuration Netbox - utiliser IP directement si DNS ne fonctionne pas
+    # Configuration Netbox - utiliser IP directement (10.0.20.11) si DNS ne fonctionne pas
     netbox_url: "{{ netbox_url | default('https://10.0.20.11') }}"
     netbox_token: "{{ netbox_token }}"
     
-    # Filtres optionnels
-    netbox_tag: "{{ netbox_tag | default('') | trim }}"
-    vm_name: "{{ vm_name | default('') | trim }}"
+    # Filtres optionnels - nettoyer les chaînes vides avec apostrophes
+    netbox_tag: "{{ (netbox_tag | default('') | trim | replace(\"''\", '')) }}"
+    vm_name: "{{ (vm_name | default('') | trim | replace(\"''\", '')) }}"
 
   tasks:
     - name: Détecter le nœud Proxmox automatiquement
@@ -32,8 +32,12 @@
       set_fact:
         proxmox_node: "{{ proxmox_nodes.json.data[0].node }}"
 
+    - name: Remplacer le hostname par l'IP si l'URL contient netbox.cesi.local
+      set_fact:
+        netbox_url: "{{ 'https://10.0.20.11' if 'netbox.cesi.local' in netbox_url else netbox_url }}"
+
     - name: Récupérer les VMs depuis Netbox (par nom)
-      when: vm_name | length > 0
+      when: vm_name is defined and vm_name | length > 0
       uri:
         url: "{{ netbox_url }}/api/virtualization/virtual-machines/?name={{ vm_name }}"
         method: GET
@@ -45,7 +49,7 @@
       register: netbox_vms_response
 
     - name: Récupérer les VMs depuis Netbox (par tag)
-      when: vm_name | length == 0 and netbox_tag | length > 0
+      when: (vm_name is not defined or vm_name | length == 0) and (netbox_tag is defined and netbox_tag | length > 0)
       uri:
         url: "{{ netbox_url }}/api/virtualization/virtual-machines/?tag={{ netbox_tag }}"
         method: GET
@@ -57,7 +61,7 @@
       register: netbox_vms_response
 
     - name: Récupérer toutes les VMs depuis Netbox
-      when: vm_name | length == 0 and netbox_tag | length == 0
+      when: (vm_name is not defined or vm_name | length == 0) and (netbox_tag is not defined or netbox_tag | length == 0)
       uri:
         url: "{{ netbox_url }}/api/virtualization/virtual-machines/"
         method: GET
