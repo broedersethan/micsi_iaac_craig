@@ -45,6 +45,60 @@
       debug:
         msg: "filter_by_name={{ filter_by_name }}, filter_by_tag={{ filter_by_tag }}, vm_name='{{ vm_name }}', netbox_tag='{{ netbox_tag }}'"
 
+    # #region agent log - Test DNS resolution (Hypothesis A)
+    - name: Test DNS resolution pour netbox.cesi.local
+      command: getent hosts netbox.cesi.local
+      register: dns_test
+      failed_when: false
+      changed_when: false
+      when: netbox_url is defined and 'netbox.cesi.local' in netbox_url
+    # #endregion
+
+    # #region agent log - Log DNS test result
+    - name: Debug - Résultat test DNS
+      debug:
+        msg: |
+          DNS Test - netbox.cesi.local:
+          Exit code: {{ dns_test.rc | default('N/A') }}
+          Result: {{ dns_test.stdout | default('N/A') }}
+          Error: {{ dns_test.stderr | default('N/A') }}
+      when: dns_test is defined
+    # #endregion
+
+    # #region agent log - Test network connectivity (Hypothesis B)
+    - name: Test connectivité réseau vers Netbox (ping)
+      command: ping -c 2 -W 2 netbox.cesi.local
+      register: ping_test
+      failed_when: false
+      changed_when: false
+      when: netbox_url is defined and 'netbox.cesi.local' in netbox_url
+    # #endregion
+
+    # #region agent log - Log ping test result
+    - name: Debug - Résultat test ping
+      debug:
+        msg: |
+          Ping Test - netbox.cesi.local:
+          Exit code: {{ ping_test.rc | default('N/A') }}
+          Result: {{ ping_test.stdout | default('N/A') }}
+          Error: {{ ping_test.stderr | default('N/A') }}
+      when: ping_test is defined
+    # #endregion
+
+    # #region agent log - Test with IP instead of hostname (Hypothesis A, B)
+    - name: Extraire l'IP de Netbox depuis DNS
+      set_fact:
+        netbox_ip: "{{ dns_test.stdout.split()[0] | default('') }}"
+      when: dns_test is defined and dns_test.rc == 0 and dns_test.stdout is defined
+    # #endregion
+
+    # #region agent log - Log extracted IP
+    - name: Debug - IP extraite
+      debug:
+        msg: "IP Netbox extraite: {{ netbox_ip | default('Non disponible') }}"
+      when: netbox_ip is defined
+    # #endregion
+
     - name: Récupérer les informations depuis Netbox (par nom)
       when: filter_by_name | bool
       uri:
@@ -73,20 +127,38 @@
       failed_when: false
       changed_when: false
 
+    # #region agent log - Try with IP if DNS failed (Hypothesis A)
+    - name: Construire URL Netbox avec IP si DNS a échoué
+      set_fact:
+        netbox_url_final: "{{ 'https://' + netbox_ip + '/api/virtualization/virtual-machines/' if (netbox_ip is defined and netbox_ip != '') else (netbox_url + '/api/virtualization/virtual-machines/') }}"
+      when: (not filter_by_name | bool) and (not filter_by_tag | bool)
+    # #endregion
+
+    # #region agent log - Log final URL
+    - name: Debug - URL finale Netbox
+      debug:
+        msg: "URL finale Netbox: {{ netbox_url_final | default('N/A') }}"
+      when: netbox_url_final is defined
+    # #endregion
+
     - name: Récupérer toutes les VMs depuis Netbox (sans filtre)
       when: (not filter_by_name | bool) and (not filter_by_tag | bool)
       uri:
-        url: "{{ netbox_url }}/api/virtualization/virtual-machines/"
+        url: "{{ netbox_url_final | default(netbox_url + '/api/virtualization/virtual-machines/') }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
           Accept: "application/json"
+          Content-Type: "application/json"
         validate_certs: no
-        status_code: 200
+        follow_redirects: all
+        timeout: 30
+        status_code: [200, 301, 302]
       register: netbox_vms_response
       failed_when: false
       changed_when: false
 
+    # #region agent log - Log detailed error information
     - name: Debug - Afficher la réponse Netbox
       debug:
         msg: |
@@ -95,7 +167,9 @@
           Redirected: {{ netbox_vms_response.redirected | default('N/A') }}
           Message: {{ netbox_vms_response.msg | default('N/A') }}
           Has json: {{ netbox_vms_response.json is defined }}
+          Full response keys: {{ netbox_vms_response.keys() | list if netbox_vms_response is defined else 'N/A' }}
       when: netbox_vms_response is defined
+    # #endregion
 
     - name: Afficher un message d'erreur si le tag n'existe pas
       fail:
