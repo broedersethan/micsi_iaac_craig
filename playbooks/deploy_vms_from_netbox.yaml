@@ -14,8 +14,8 @@
     netbox_token: "{{ netbox_token }}"
     
     # Filtre Netbox (peut être passé en Survey Variables dans Semaphore)
-    netbox_tag: "{{ netbox_tag | default('') }}"
-    vm_name: "{{ vm_name | default('') }}"
+    netbox_tag: "{{ netbox_tag | default('') | trim }}"
+    vm_name: "{{ vm_name | default('') | trim }}"
 
   tasks:
     - name: Détecter le nœud Proxmox automatiquement
@@ -36,13 +36,8 @@
       debug:
         msg: "Utilisation du nœud Proxmox : {{ proxmox_node }}"
 
-    - name: Debug - Afficher vm_name
-      debug:
-        msg: "vm_name = '{{ vm_name }}' (length: {{ vm_name | length }})"
-      when: vm_name is defined
-
     - name: Récupérer les informations depuis Netbox (par nom)
-      when: vm_name is defined and vm_name | length > 0
+      when: vm_name is defined and vm_name | trim | length > 0
       uri:
         url: "{{ netbox_url }}/api/virtualization/virtual-machines/?name={{ vm_name }}"
         method: GET
@@ -56,7 +51,7 @@
       changed_when: false
 
     - name: Récupérer les informations depuis Netbox (par tag)
-      when: (vm_name is not defined or vm_name | length == 0) and (netbox_tag is defined and netbox_tag | length > 0)
+      when: (vm_name is not defined or vm_name | trim | length == 0) and (netbox_tag is defined and netbox_tag | trim | length > 0)
       uri:
         url: "{{ netbox_url }}/api/virtualization/virtual-machines/?tag={{ netbox_tag }}"
         method: GET
@@ -70,7 +65,7 @@
       changed_when: false
 
     - name: Récupérer toutes les VMs depuis Netbox (sans filtre)
-      when: (vm_name is not defined or vm_name | length == 0) and (netbox_tag is not defined or netbox_tag | length == 0)
+      when: (vm_name is not defined or vm_name | trim | length == 0) and (netbox_tag is not defined or netbox_tag | trim | length == 0)
       uri:
         url: "{{ netbox_url }}/api/virtualization/virtual-machines/"
         method: GET
