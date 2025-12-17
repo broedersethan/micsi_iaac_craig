@@ -36,10 +36,15 @@
       set_fact:
         netbox_url_final: "{{ 'https://10.0.20.11' if 'netbox.cesi.local' in netbox_url else netbox_url }}"
 
+    - name: Nettoyer vm_name et netbox_tag
+      set_fact:
+        vm_name_clean: "{{ vm_name | replace(\"''\", '') | trim }}"
+        netbox_tag_clean: "{{ netbox_tag | replace(\"''\", '') | trim }}"
+
     - name: Récupérer les VMs depuis Netbox (par nom)
-      when: vm_name is defined and vm_name | length > 0
+      when: vm_name_clean is defined and vm_name_clean | length > 0
       uri:
-        url: "{{ netbox_url_final | default(netbox_url) }}/api/virtualization/virtual-machines/?name={{ vm_name }}"
+        url: "{{ netbox_url_final | default(netbox_url) }}/api/virtualization/virtual-machines/?name={{ vm_name_clean }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
@@ -49,9 +54,9 @@
       register: netbox_vms_response
 
     - name: Récupérer les VMs depuis Netbox (par tag)
-      when: (vm_name is not defined or vm_name | length == 0) and (netbox_tag is defined and netbox_tag | length > 0)
+      when: (vm_name_clean is not defined or vm_name_clean | length == 0) and (netbox_tag_clean is defined and netbox_tag_clean | length > 0)
       uri:
-        url: "{{ netbox_url_final | default(netbox_url) }}/api/virtualization/virtual-machines/?tag={{ netbox_tag }}"
+        url: "{{ netbox_url_final | default(netbox_url) }}/api/virtualization/virtual-machines/?tag={{ netbox_tag_clean }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
@@ -61,7 +66,7 @@
       register: netbox_vms_response
 
     - name: Récupérer toutes les VMs depuis Netbox
-      when: (vm_name is not defined or vm_name | length == 0) and (netbox_tag is not defined or netbox_tag | length == 0)
+      when: (vm_name_clean is not defined or vm_name_clean | length == 0) and (netbox_tag_clean is not defined or netbox_tag_clean | length == 0)
       uri:
         url: "{{ netbox_url_final | default(netbox_url) }}/api/virtualization/virtual-machines/"
         method: GET
