@@ -89,7 +89,10 @@
 
     - name: Debug - Afficher la réponse Netbox
       debug:
-        msg: "netbox_vms_response keys: {{ netbox_vms_response.keys() | list if netbox_vms_response is defined else 'non défini' }}"
+        msg: |
+          Status: {{ netbox_vms_response.status | default('N/A') }}
+          Has json: {{ netbox_vms_response.json is defined }}
+          Response keys: {{ netbox_vms_response.keys() | list if netbox_vms_response is defined else 'non défini' }}
       when: netbox_vms_response is defined
 
     - name: Afficher un message d'erreur si le tag n'existe pas
@@ -100,7 +103,10 @@
     - name: Extraire les VMs de la réponse Netbox
       set_fact:
         netbox_vms: "{{ netbox_vms_response.json.results | default([]) }}"
-      when: netbox_vms_response is defined and netbox_vms_response.json is defined
+      when: >
+        netbox_vms_response is defined 
+        and netbox_vms_response.json is defined
+        and netbox_vms_response.status | default(0) == 200
 
     - name: Initialiser netbox_vms à liste vide si non défini
       set_fact:
