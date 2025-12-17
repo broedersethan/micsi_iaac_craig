@@ -9,8 +9,8 @@
     proxmox_api_token_id: "{{ proxmox_api_token_id | default('One') }}"
     proxmox_api_token_secret: "{{ proxmox_api_token_secret }}"
     
-    # Configuration Netbox - utiliser IP directement (10.0.20.11) si DNS ne fonctionne pas
-    netbox_url: "{{ netbox_url | default('https://10.0.20.11') }}"
+    # Configuration Netbox
+    netbox_url: "{{ netbox_url | default('https://netbox.cesi.local') }}"
     netbox_token: "{{ netbox_token }}"
     
     # Filtres optionnels - nettoyer les chaînes vides avec apostrophes
@@ -32,10 +32,6 @@
       set_fact:
         proxmox_node: "{{ proxmox_nodes.json.data[0].node }}"
 
-    - name: Remplacer le hostname par l'IP si l'URL contient netbox.cesi.local
-      set_fact:
-        netbox_url_final: "{{ 'https://10.0.20.11' if 'netbox.cesi.local' in netbox_url else netbox_url }}"
-
     - name: Nettoyer vm_name et netbox_tag
       set_fact:
         vm_name_clean: "{{ vm_name | replace(\"''\", '') | trim }}"
@@ -44,7 +40,7 @@
     - name: Récupérer les VMs depuis Netbox (par nom)
       when: vm_name_clean is defined and vm_name_clean | length > 0
       uri:
-        url: "{{ netbox_url_final | default(netbox_url) }}/api/virtualization/virtual-machines/?name={{ vm_name_clean }}"
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?name={{ vm_name_clean }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
@@ -56,7 +52,7 @@
     - name: Récupérer les VMs depuis Netbox (par tag)
       when: (vm_name_clean is not defined or vm_name_clean | length == 0) and (netbox_tag_clean is defined and netbox_tag_clean | length > 0)
       uri:
-        url: "{{ netbox_url_final | default(netbox_url) }}/api/virtualization/virtual-machines/?tag={{ netbox_tag_clean }}"
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?tag={{ netbox_tag_clean }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
@@ -68,7 +64,7 @@
     - name: Récupérer toutes les VMs depuis Netbox
       when: (vm_name_clean is not defined or vm_name_clean | length == 0) and (netbox_tag_clean is not defined or netbox_tag_clean | length == 0)
       uri:
-        url: "{{ netbox_url_final | default(netbox_url) }}/api/virtualization/virtual-machines/"
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
