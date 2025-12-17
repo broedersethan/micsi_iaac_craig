@@ -36,6 +36,11 @@
       debug:
         msg: "Utilisation du nœud Proxmox : {{ proxmox_node }}"
 
+    - name: Debug - Afficher vm_name
+      debug:
+        msg: "vm_name = '{{ vm_name }}' (length: {{ vm_name | length }})"
+      when: vm_name is defined
+
     - name: Récupérer les informations depuis Netbox (par nom)
       when: vm_name is defined and vm_name | length > 0
       uri:
