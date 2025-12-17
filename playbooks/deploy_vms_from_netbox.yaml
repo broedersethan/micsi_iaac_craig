@@ -49,6 +49,7 @@
       register: netbox_vms_response
       failed_when: false
       changed_when: false
+      when: false  # Désactivé temporairement - utiliser "toutes les VMs" par défaut
 
     - name: Récupérer les informations depuis Netbox (par tag)
       when: (vm_name is not defined or vm_name | trim | length == 0) and (netbox_tag is defined and netbox_tag | trim | length > 0)
@@ -65,7 +66,10 @@
       changed_when: false
 
     - name: Récupérer toutes les VMs depuis Netbox (sans filtre)
-      when: (vm_name is not defined or vm_name | trim | length == 0) and (netbox_tag is not defined or netbox_tag | trim | length == 0)
+      when: >
+        (vm_name is not defined or vm_name | trim | length == 0) 
+        and (netbox_tag is not defined or netbox_tag | trim | length == 0)
+        or (vm_name is defined and vm_name | trim | length == 0 and netbox_tag is not defined)
       uri:
         url: "{{ netbox_url }}/api/virtualization/virtual-machines/"
         method: GET
@@ -88,7 +92,7 @@
         netbox_vms: "{{ netbox_vms_response.json.results | default([]) }}"
       when: netbox_vms_response is defined and netbox_vms_response.json is defined
 
-    - name: Initialiser netbox_vms si non défini
+    - name: Initialiser netbox_vms à liste vide si non défini
       set_fact:
         netbox_vms: []
       when: netbox_vms is not defined
