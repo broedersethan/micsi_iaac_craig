@@ -41,6 +41,10 @@
         filter_by_name: "{{ (vm_name is defined and vm_name | trim | length > 0) | bool }}"
         filter_by_tag: "{{ (netbox_tag is defined and netbox_tag | trim | length > 0) | bool }}"
 
+    - name: Debug - Afficher les filtres
+      debug:
+        msg: "filter_by_name={{ filter_by_name }}, filter_by_tag={{ filter_by_tag }}, vm_name='{{ vm_name }}', netbox_tag='{{ netbox_tag }}'"
+
     - name: Récupérer les informations depuis Netbox (par nom)
       when: filter_by_name | bool
       uri:
