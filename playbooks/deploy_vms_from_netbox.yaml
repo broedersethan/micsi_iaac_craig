@@ -3,18 +3,17 @@
   hosts: localhost
   gather_facts: false
   vars:
-    # Configuration Proxmox (à définir dans Semaphore Variable Group)
+    # Configuration Proxmox
     proxmox_api_host: "{{ proxmox_api_host | default('10.0.20.50') }}"
     proxmox_api_user: "{{ proxmox_api_user | default('root@pam') }}"
     proxmox_api_token_id: "{{ proxmox_api_token_id | default('One') }}"
     proxmox_api_token_secret: "{{ proxmox_api_token_secret }}"
     
-    # Configuration Netbox (à définir dans Semaphore Variable Group)
-    netbox_url: "{{ netbox_url | default('https://netbox.cesi.local') }}"
-    netbox_token: "{{ netbox_token | default('') }}"
-    netbox_ip_fallback: "10.0.20.11"
+    # Configuration Netbox - utiliser IP directement si DNS ne fonctionne pas
+    netbox_url: "{{ netbox_url | default('https://10.0.20.11') }}"
+    netbox_token: "{{ netbox_token }}"
     
-    # Filtre Netbox (peut être passé en Survey Variables dans Semaphore)
+    # Filtres optionnels
     netbox_tag: "{{ netbox_tag | default('') | trim }}"
     vm_name: "{{ vm_name | default('') | trim }}"
 
@@ -33,213 +32,33 @@
       set_fact:
         proxmox_node: "{{ proxmox_nodes.json.data[0].node }}"
 
-    - name: Afficher le nœud Proxmox utilisé
-      debug:
-        msg: "Utilisation du nœud Proxmox : {{ proxmox_node }}"
-
-    - name: Définir si on doit filtrer par nom
+    - name: Construire l'URL de l'API Netbox
       set_fact:
-        filter_by_name: "{{ (vm_name is defined and vm_name | trim | replace(\"''\", '') | length > 0) | bool }}"
-        filter_by_tag: "{{ (netbox_tag is defined and netbox_tag | trim | replace(\"''\", '') | length > 0) | bool }}"
+        netbox_api_url: "{{ netbox_url }}/api/virtualization/virtual-machines/{% if vm_name | length > 0 %}?name={{ vm_name }}{% elif netbox_tag | length > 0 %}?tag={{ netbox_tag }}{% endif %}"
 
-    - name: Debug - Afficher les filtres
-      debug:
-        msg: "filter_by_name={{ filter_by_name }}, filter_by_tag={{ filter_by_tag }}, vm_name='{{ vm_name }}', netbox_tag='{{ netbox_tag }}'"
-
-    # #region agent log - Test DNS resolution (Hypothesis A)
-    - name: Test DNS resolution pour netbox.cesi.local
-      command: getent hosts netbox.cesi.local
-      register: dns_test
-      failed_when: false
-      changed_when: false
-      when: netbox_url is defined and 'netbox.cesi.local' in netbox_url
-    # #endregion
-
-    # #region agent log - Log DNS test result
-    - name: Debug - Résultat test DNS
-      debug:
-        msg: |
-          DNS Test - netbox.cesi.local:
-          Exit code: {{ dns_test.rc | default('N/A') }}
-          Result: {{ dns_test.stdout | default('N/A') }}
-          Error: {{ dns_test.stderr | default('N/A') }}
-      when: dns_test is defined
-    # #endregion
-
-    # #region agent log - Test network connectivity (Hypothesis B)
-    - name: Test connectivité réseau vers Netbox (ping)
-      command: ping -c 2 -W 2 netbox.cesi.local
-      register: ping_test
-      failed_when: false
-      changed_when: false
-      when: netbox_url is defined and 'netbox.cesi.local' in netbox_url
-    # #endregion
-
-    # #region agent log - Log ping test result
-    - name: Debug - Résultat test ping
-      debug:
-        msg: |
-          Ping Test - netbox.cesi.local:
-          Exit code: {{ ping_test.rc | default('N/A') }}
-          Result: {{ ping_test.stdout | default('N/A') }}
-          Error: {{ ping_test.stderr | default('N/A') }}
-      when: ping_test is defined
-    # #endregion
-
-    # #region agent log - Test with IP instead of hostname (Hypothesis A, B)
-    - name: Extraire l'IP de Netbox depuis DNS
-      set_fact:
-        netbox_ip: "{{ dns_test.stdout.split()[0] | default('') }}"
-      when: dns_test is defined and dns_test.rc == 0 and dns_test.stdout is defined
-
-    - name: Utiliser IP de fallback si DNS a échoué
-      set_fact:
-        netbox_ip: "{{ netbox_ip_fallback }}"
-      when: (dns_test is not defined) or (dns_test.rc != 0) or (netbox_ip is not defined or netbox_ip == '')
-    # #endregion
-
-    # #region agent log - Log extracted IP
-    - name: Debug - IP Netbox à utiliser
-      debug:
-        msg: "IP Netbox à utiliser: {{ netbox_ip | default('Non disponible') }}"
-      when: netbox_ip is defined
-    # #endregion
-
-    # #region agent log - Construire URL Netbox avec IP si nécessaire
-    - name: Extraire le protocole, le port et le hostname de l'URL Netbox
-      set_fact:
-        netbox_protocol: "{{ 'https' if 'https://' in netbox_url else 'http' }}"
-        netbox_url_parts: "{{ netbox_url.split('://')[1].split('/')[0] }}"
-
-    - name: Extraire le hostname depuis les parties de l'URL
-      set_fact:
-        netbox_hostname: "{{ netbox_url_parts.split(':')[0] }}"
-
-    - name: Extraire le port depuis les parties de l'URL
-      set_fact:
-        netbox_port_explicit: "{{ netbox_url_parts.split(':')[1] | default('') }}"
-
-    - name: Définir le port final (explicite ou par défaut)
-      set_fact:
-        netbox_port: "{{ netbox_port_explicit if (netbox_port_explicit is defined and netbox_port_explicit != '') else ('443' if netbox_protocol == 'https' else '80') }}"
-
-    - name: Construire URL Netbox finale avec IP
-      set_fact:
-        netbox_url_final: "{{ netbox_protocol }}://{{ netbox_ip }}:{{ netbox_port }}"
-      when: netbox_ip is defined and netbox_ip != ''
-    # #endregion
-
-    # #region agent log - Log final URL
-    - name: Debug - URL Netbox finale
-      debug:
-        msg: |
-          URL Netbox originale: {{ netbox_url }}
-          Hostname: {{ netbox_hostname | default('N/A') }}
-          IP utilisée: {{ netbox_ip | default('N/A') }}
-          URL finale: {{ netbox_url_final | default(netbox_url) }}
-      when: netbox_url_final is defined or netbox_url is defined
-    # #endregion
-
-    - name: Récupérer les informations depuis Netbox (par nom)
-      when: filter_by_name | bool
+    - name: Récupérer les VMs depuis Netbox
       uri:
-        url: "{{ (netbox_url_final | default(netbox_url)) }}/api/virtualization/virtual-machines/?name={{ vm_name | trim }}"
+        url: "{{ netbox_api_url }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
           Accept: "application/json"
         validate_certs: no
-        follow_redirects: all
-        timeout: 30
-        status_code: [200, 400]
+        status_code: 200
       register: netbox_vms_response
-      failed_when: false
-      changed_when: false
-
-    - name: Récupérer les informations depuis Netbox (par tag)
-      when: (not filter_by_name | bool) and (filter_by_tag | bool)
-      uri:
-        url: "{{ (netbox_url_final | default(netbox_url)) }}/api/virtualization/virtual-machines/?tag={{ netbox_tag | trim }}"
-        method: GET
-        headers:
-          Authorization: "Token {{ netbox_token }}"
-          Accept: "application/json"
-        validate_certs: no
-        follow_redirects: all
-        timeout: 30
-        status_code: [200, 400]
-      register: netbox_vms_response
-      failed_when: false
-      changed_when: false
-
-    - name: Récupérer toutes les VMs depuis Netbox (sans filtre)
-      when: (not filter_by_name | bool) and (not filter_by_tag | bool)
-      uri:
-        url: "{{ (netbox_url_final | default(netbox_url)) }}/api/virtualization/virtual-machines/"
-        method: GET
-        headers:
-          Authorization: "Token {{ netbox_token }}"
-          Accept: "application/json"
-          Content-Type: "application/json"
-        validate_certs: no
-        follow_redirects: all
-        timeout: 30
-        status_code: [200, 301, 302]
-      register: netbox_vms_response
-      failed_when: false
-      changed_when: false
-
-    # #region agent log - Log detailed error information
-    - name: Debug - Afficher la réponse Netbox complète
-      debug:
-        var: netbox_vms_response
-      when: netbox_vms_response is defined
-
-    - name: Debug - Afficher la réponse Netbox (résumé)
-      debug:
-        msg: |
-          Status: {{ netbox_vms_response.status | default('N/A') }}
-          URL: {{ netbox_vms_response.url | default('N/A') }}
-          Redirected: {{ netbox_vms_response.redirected | default('N/A') }}
-          Message: {{ netbox_vms_response.msg | default('N/A') }}
-          Has json: {{ netbox_vms_response.json is defined }}
-          JSON keys: {{ netbox_vms_response.json.keys() | list if (netbox_vms_response.json is defined) else 'N/A' }}
-          Count: {{ netbox_vms_response.json.count | default('N/A') if (netbox_vms_response.json is defined) else 'N/A' }}
-          Results length: {{ netbox_vms_response.json.results | length | default(0) if (netbox_vms_response.json is defined and netbox_vms_response.json.results is defined) else 0 }}
-      when: netbox_vms_response is defined
-    # #endregion
-
-    - name: Afficher un message d'erreur si le tag n'existe pas
-      fail:
-        msg: "Le tag '{{ netbox_tag }}' n'existe pas dans Netbox. Utilisez netbox_tag: '' pour récupérer toutes les VMs ou spécifiez un tag valide."
-      when: netbox_vms_response.status is defined and netbox_vms_response.status == 400
 
     - name: Extraire les VMs de la réponse Netbox
       set_fact:
         netbox_vms: "{{ netbox_vms_response.json.results | default([]) }}"
-      when: >
-        netbox_vms_response is defined 
-        and netbox_vms_response.json is defined
-        and (netbox_vms_response.status | default(-1) == 200 or netbox_vms_response.status | default(-1) == 0)
-
-    - name: Initialiser netbox_vms à liste vide si non défini
-      set_fact:
-        netbox_vms: []
-      when: netbox_vms is not defined
-
-    - name: Vérifier que le token Netbox est défini
-      fail:
-        msg: "Le token Netbox (netbox_token) est obligatoire. Définissez-le dans Semaphore Variable Group."
-      when: netbox_token is not defined or netbox_token == ''
 
     - name: Vérifier que des VMs ont été trouvées
       fail:
-        msg: "Aucune VM trouvée dans Netbox. Vérifiez le tag ou le nom spécifié, et assurez-vous que le token Netbox est valide."
+        msg: "Aucune VM trouvée dans Netbox."
       when: netbox_vms | length == 0
 
-    - name: Afficher les VMs trouvées dans Netbox
+    - name: Afficher les VMs trouvées
       debug:
-        msg: "VMs trouvées dans Netbox : {{ netbox_vms | map(attribute='name') | list }}"
+        msg: "VMs trouvées : {{ netbox_vms | map(attribute='name') | list }}"
 
     - name: Créer les VMs sur Proxmox
       community.proxmox.proxmox_kvm:
@@ -271,4 +90,3 @@
       loop: "{{ vm_creation_result.results }}"
       loop_control:
         label: "{{ item.item.name }}"
-
