@@ -1,34 +1,77 @@
 ---
-- name: Deploy LXC
+- name: Deploy LXC from Netbox
   hosts: localhost
   gather_facts: false
+  vars:
+    # Configuration Proxmox (à définir dans Semaphore Variable Group)
+    proxmox_api_host: "{{ proxmox_api_host | default('10.0.20.50') }}"
+    proxmox_api_user: "{{ proxmox_api_user | default('root@pam') }}"
+    proxmox_api_token_id: "{{ proxmox_api_token_id | default('One') }}"
+    proxmox_api_token_secret: "{{ proxmox_api_token_secret }}"
+    
+    # Configuration Netbox (à définir dans Semaphore Variable Group)
+    netbox_url: "{{ netbox_url | default('https://netbox.cesi.local') }}"
+    netbox_token: "{{ netbox_token }}"
+    
+    # Configuration LXC
+    lxc_password: "{{ lxc_password | default('123456') }}"
+    lxc_ostemplate: "{{ lxc_ostemplate | default('local:vztmpl/alpine-3.22-default_20250617_amd64.tar.xz') }}"
 
   tasks:
-    - name: Obtain list of Virtual Machines from NetBox
-      debug:
-        msg: >
-          "Virtual Machine {{ item.value.name }} has {{ item.value.disk }} space"
-      loop: "{{ query('netbox.netbox.nb_lookup', 'virtual-machines',
-                      api_endpoint='http://172.18.0.7:8080/',
-                      token='11604d42f0f3e6930b32711dedc1db2bb2771887') }}"
-      tags:
-        - debug
+    - name: Détecter le nœud Proxmox automatiquement
+      uri:
+        url: "https://{{ proxmox_api_host }}:8006/api2/json/nodes"
+        method: GET
+        headers:
+          Authorization: "PVEAPIToken={{ proxmox_api_user }}!{{ proxmox_api_token_id }}={{ proxmox_api_token_secret }}"
+        validate_certs: no
+        status_code: 200
+      register: proxmox_nodes
 
-    - name: Create new container with minimal options
+    - name: Définir le nom du nœud Proxmox
+      set_fact:
+        proxmox_node: "{{ proxmox_nodes.json.data[0].node }}"
+
+    - name: Afficher le nœud Proxmox utilisé
+      debug:
+        msg: "Utilisation du nœud Proxmox : {{ proxmox_node }}"
+
+    - name: Récupérer les VMs depuis Netbox
+      uri:
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/"
+        method: GET
+        headers:
+          Authorization: "Token {{ netbox_token }}"
+          Accept: "application/json"
+        validate_certs: no
+        status_code: 200
+      register: netbox_vms_response
+
+    - name: Extraire les VMs de la réponse Netbox
+      set_fact:
+        netbox_vms: "{{ netbox_vms_response.json.results }}"
+
+    - name: Afficher les VMs trouvées dans Netbox
+      debug:
+        msg: "VMs trouvées dans Netbox : {{ netbox_vms | map(attribute='name') | list }}"
+
+    - name: Create new LXC container from Netbox
       community.proxmox.proxmox:
-        node: pve
-        api_user: root@pam
-        api_token_id: 'One'
-        api_token_secret: '9a73add3-9ad9-4b46-98d3-2a71dbc517de'
-        api_host: 192.168.52.132
-        password: 123456
-        hostname: "{{ item.value.name }}"
-        ostemplate: 'local:vztmpl/alpine-3.20-default_20240908_amd64.tar.xz'
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ item.id + 200 }}"
+        state: present
+        hostname: "{{ item.name }}"
+        password: "{{ lxc_password }}"
+        ostemplate: "{{ lxc_ostemplate }}"
         disk_volume:
           storage: local-lvm
-          size: "{{ item.value.disk // 1024 }}"
+          size: "{{ (item.disk | default(20480) / 1024) | int }}"
+      loop: "{{ netbox_vms }}"
+      loop_control:
+        label: "{{ item.name }}"
       tags:
         - proxmox
-      loop: "{{ query('netbox.netbox.nb_lookup', 'virtual-machines',
-                api_endpoint='http://172.18.0.7:8080/',
-                token='11604d42f0f3e6930b32711dedc1db2bb2771887') }}"

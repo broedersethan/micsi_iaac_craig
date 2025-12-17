@@ -1,0 +1,126 @@
+---
+- name: Déployer des VMs depuis Netbox vers Proxmox
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # Configuration Proxmox (à définir dans Semaphore Variable Group)
+    proxmox_api_host: "{{ proxmox_api_host | default('10.0.20.50') }}"
+    proxmox_api_user: "{{ proxmox_api_user | default('root@pam') }}"
+    proxmox_api_token_id: "{{ proxmox_api_token_id | default('One') }}"
+    proxmox_api_token_secret: "{{ proxmox_api_token_secret }}"
+    
+    # Configuration Netbox (à définir dans Semaphore Variable Group)
+    netbox_url: "{{ netbox_url | default('https://netbox.cesi.local') }}"
+    netbox_token: "{{ netbox_token }}"
+    
+    # Filtre Netbox (peut être passé en Survey Variables dans Semaphore)
+    netbox_tag: "{{ netbox_tag | default('') }}"
+    vm_name: "{{ vm_name | default('') }}"
+
+  tasks:
+    - name: Détecter le nœud Proxmox automatiquement
+      uri:
+        url: "https://{{ proxmox_api_host }}:8006/api2/json/nodes"
+        method: GET
+        headers:
+          Authorization: "PVEAPIToken={{ proxmox_api_user }}!{{ proxmox_api_token_id }}={{ proxmox_api_token_secret }}"
+        validate_certs: no
+        status_code: 200
+      register: proxmox_nodes
+
+    - name: Définir le nom du nœud Proxmox
+      set_fact:
+        proxmox_node: "{{ proxmox_nodes.json.data[0].node }}"
+
+    - name: Afficher le nœud Proxmox utilisé
+      debug:
+        msg: "Utilisation du nœud Proxmox : {{ proxmox_node }}"
+
+    - name: Récupérer les informations depuis Netbox (par nom)
+      when: vm_name is defined and vm_name != ""
+      uri:
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?name={{ vm_name }}"
+        method: GET
+        headers:
+          Authorization: "Token {{ netbox_token }}"
+          Accept: "application/json"
+        validate_certs: no
+        status_code: [200, 400]
+      register: netbox_vms_response
+      failed_when: netbox_vms_response.status == 400
+
+    - name: Récupérer les informations depuis Netbox (par tag)
+      when: (vm_name is not defined or vm_name == "") and (netbox_tag is defined and netbox_tag != "")
+      uri:
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?tag={{ netbox_tag }}"
+        method: GET
+        headers:
+          Authorization: "Token {{ netbox_token }}"
+          Accept: "application/json"
+        validate_certs: no
+        status_code: [200, 400]
+      register: netbox_vms_response
+      failed_when: netbox_vms_response.status == 400
+
+    - name: Récupérer toutes les VMs depuis Netbox (sans filtre)
+      when: (vm_name is not defined or vm_name == "") and (netbox_tag is not defined or netbox_tag == "")
+      uri:
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/"
+        method: GET
+        headers:
+          Authorization: "Token {{ netbox_token }}"
+          Accept: "application/json"
+        validate_certs: no
+        status_code: 200
+      register: netbox_vms_response
+
+    - name: Afficher un message d'erreur si le tag n'existe pas
+      fail:
+        msg: "Le tag '{{ netbox_tag }}' n'existe pas dans Netbox. Utilisez netbox_tag: '' pour récupérer toutes les VMs ou spécifiez un tag valide."
+      when: netbox_vms_response.status == 400
+
+    - name: Extraire les VMs de la réponse Netbox
+      set_fact:
+        netbox_vms: "{{ netbox_vms_response.json.results }}"
+      when: netbox_vms_response.status == 200
+
+    - name: Vérifier que des VMs ont été trouvées
+      fail:
+        msg: "Aucune VM trouvée dans Netbox. Vérifiez le tag ou le nom spécifié."
+      when: netbox_vms is not defined or netbox_vms | length == 0
+
+    - name: Afficher les VMs trouvées dans Netbox
+      debug:
+        msg: "VMs trouvées dans Netbox : {{ netbox_vms | map(attribute='name') | list }}"
+
+    - name: Créer les VMs sur Proxmox
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_api_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        name: "{{ item.name }}"
+        vmid: "{{ item.custom_fields.vmid | default(omit) }}"
+        memory: "{{ (item.memory | default(2048)) | int }}"
+        cores: "{{ (item.vcpus | default(2)) | int }}"
+        sockets: "{{ (item.vcpus | default(2)) | int }}"
+        net:
+          net0: "virtio,bridge=vmbr0"
+        scsihw: virtio-scsi-pci
+        scsi:
+          scsi0: "local-lvm:{{ ((item.disk | default(20480)) / 1024) | int }},format=raw"
+        ostype: l26
+        state: present
+      loop: "{{ netbox_vms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: vm_creation_result
+
+    - name: Afficher le résultat de la création
+      debug:
+        msg: "VM {{ item.item.name }} : {{ item.changed | ternary('créée/modifiée', 'déjà existante') }}"
+      loop: "{{ vm_creation_result.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
