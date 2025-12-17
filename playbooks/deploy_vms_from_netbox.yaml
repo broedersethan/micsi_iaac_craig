@@ -12,7 +12,7 @@
     # Configuration Netbox (à définir dans Semaphore Variable Group)
     netbox_url: "{{ netbox_url | default('https://netbox.cesi.local') }}"
     netbox_token: "{{ netbox_token | default('') }}"
-    netbox_ip_fallback: "{{ netbox_ip_fallback | default('10.0.20.11') }}"
+    netbox_ip_fallback: "10.0.20.11"
     
     # Filtre Netbox (peut être passé en Survey Variables dans Semaphore)
     netbox_tag: "{{ netbox_tag | default('') | trim }}"
