@@ -38,8 +38,8 @@
 
     - name: Définir si on doit filtrer par nom
       set_fact:
-        filter_by_name: "{{ (vm_name is defined and vm_name | trim | length > 0) | bool }}"
-        filter_by_tag: "{{ (netbox_tag is defined and netbox_tag | trim | length > 0) | bool }}"
+        filter_by_name: "{{ (vm_name is defined and vm_name | trim | replace(\"''\", '') | length > 0) | bool }}"
+        filter_by_tag: "{{ (netbox_tag is defined and netbox_tag | trim | replace(\"''\", '') | length > 0) | bool }}"
 
     - name: Debug - Afficher les filtres
       debug:
