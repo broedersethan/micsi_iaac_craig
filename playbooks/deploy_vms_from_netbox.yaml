@@ -85,13 +85,18 @@
 
     - name: Extraire les VMs de la réponse Netbox
       set_fact:
-        netbox_vms: "{{ netbox_vms_response.json.results }}"
+        netbox_vms: "{{ netbox_vms_response.json.results | default([]) }}"
       when: netbox_vms_response is defined and netbox_vms_response.json is defined
+
+    - name: Initialiser netbox_vms si non défini
+      set_fact:
+        netbox_vms: []
+      when: netbox_vms is not defined
 
     - name: Vérifier que des VMs ont été trouvées
       fail:
         msg: "Aucune VM trouvée dans Netbox. Vérifiez le tag ou le nom spécifié."
-      when: netbox_vms is not defined or netbox_vms | length == 0
+      when: netbox_vms | length == 0
 
     - name: Afficher les VMs trouvées dans Netbox
       debug:
