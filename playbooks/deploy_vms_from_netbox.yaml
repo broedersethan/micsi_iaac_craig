@@ -102,7 +102,7 @@
           net0: "virtio,bridge=vmbr0"
         scsihw: virtio-scsi-pci
         scsi:
-          scsi0: "local-lvm:{{ (((item.disk | default(20480)) / 1024) | round(0, 'ceil') | int) | max(1) }},format=raw"
+          scsi0: "local-lvm:{{ [[((item.disk | default(20480) / 1024) | round(0, 'ceil') | int), 1] | max }},format=raw"
         ostype: l26
         state: present
       loop: "{{ netbox_vms }}"
