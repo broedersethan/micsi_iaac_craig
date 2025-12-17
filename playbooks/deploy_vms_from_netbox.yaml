@@ -32,13 +32,34 @@
       set_fact:
         proxmox_node: "{{ proxmox_nodes.json.data[0].node }}"
 
-    - name: Construire l'URL de l'API Netbox
-      set_fact:
-        netbox_api_url: "{{ netbox_url }}/api/virtualization/virtual-machines/{% if vm_name | length > 0 %}?name={{ vm_name }}{% elif netbox_tag | length > 0 %}?tag={{ netbox_tag }}{% endif %}"
-
-    - name: Récupérer les VMs depuis Netbox
+    - name: Récupérer les VMs depuis Netbox (par nom)
+      when: vm_name | length > 0
       uri:
-        url: "{{ netbox_api_url }}"
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?name={{ vm_name }}"
+        method: GET
+        headers:
+          Authorization: "Token {{ netbox_token }}"
+          Accept: "application/json"
+        validate_certs: no
+        status_code: 200
+      register: netbox_vms_response
+
+    - name: Récupérer les VMs depuis Netbox (par tag)
+      when: vm_name | length == 0 and netbox_tag | length > 0
+      uri:
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?tag={{ netbox_tag }}"
+        method: GET
+        headers:
+          Authorization: "Token {{ netbox_token }}"
+          Accept: "application/json"
+        validate_certs: no
+        status_code: 200
+      register: netbox_vms_response
+
+    - name: Récupérer toutes les VMs depuis Netbox
+      when: vm_name | length == 0 and netbox_tag | length == 0
+      uri:
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
