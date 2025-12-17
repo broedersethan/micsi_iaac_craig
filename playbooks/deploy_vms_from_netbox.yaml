@@ -106,11 +106,13 @@
     # #endregion
 
     # #region agent log - Construire URL Netbox avec IP si nécessaire
-    - name: Extraire le protocole et le port de l'URL Netbox
+    - name: Extraire le protocole, le port et le hostname de l'URL Netbox
       set_fact:
         netbox_protocol: "{{ 'https' if 'https://' in netbox_url else 'http' }}"
-        netbox_port: "{{ netbox_url.split(':')[2].split('/')[0] if ':' in netbox_url.split('://')[1] and '/' in netbox_url.split('://')[1] else ('443' if 'https' in netbox_url else '80') }}"
-        netbox_hostname: "{{ netbox_url.split('://')[1].split(':')[0].split('/')[0] }}"
+        netbox_url_parts: "{{ netbox_url.split('://')[1].split('/')[0] }}"
+        netbox_hostname: "{{ netbox_url_parts.split(':')[0] }}"
+        netbox_port_explicit: "{{ netbox_url_parts.split(':')[1] | default('') }}"
+        netbox_port: "{{ netbox_port_explicit if netbox_port_explicit != '' else ('443' if netbox_protocol == 'https' else '80') }}"
 
     - name: Construire URL Netbox finale avec IP
       set_fact:
