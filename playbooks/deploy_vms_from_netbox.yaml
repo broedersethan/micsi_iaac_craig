@@ -190,7 +190,12 @@
       changed_when: false
 
     # #region agent log - Log detailed error information
-    - name: Debug - Afficher la réponse Netbox
+    - name: Debug - Afficher la réponse Netbox complète
+      debug:
+        var: netbox_vms_response
+      when: netbox_vms_response is defined
+
+    - name: Debug - Afficher la réponse Netbox (résumé)
       debug:
         msg: |
           Status: {{ netbox_vms_response.status | default('N/A') }}
@@ -198,7 +203,9 @@
           Redirected: {{ netbox_vms_response.redirected | default('N/A') }}
           Message: {{ netbox_vms_response.msg | default('N/A') }}
           Has json: {{ netbox_vms_response.json is defined }}
-          Full response keys: {{ netbox_vms_response.keys() | list if netbox_vms_response is defined else 'N/A' }}
+          JSON keys: {{ netbox_vms_response.json.keys() | list if (netbox_vms_response.json is defined) else 'N/A' }}
+          Count: {{ netbox_vms_response.json.count | default('N/A') if (netbox_vms_response.json is defined) else 'N/A' }}
+          Results length: {{ netbox_vms_response.json.results | length | default(0) if (netbox_vms_response.json is defined and netbox_vms_response.json.results is defined) else 0 }}
       when: netbox_vms_response is defined
     # #endregion
 
@@ -213,7 +220,7 @@
       when: >
         netbox_vms_response is defined 
         and netbox_vms_response.json is defined
-        and netbox_vms_response.status | default(0) == 200
+        and (netbox_vms_response.status | default(-1) == 200 or netbox_vms_response.status | default(-1) == 0)
 
     - name: Initialiser netbox_vms à liste vide si non défini
       set_fact:
