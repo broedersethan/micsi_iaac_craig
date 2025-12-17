@@ -36,10 +36,15 @@
       debug:
         msg: "Utilisation du nœud Proxmox : {{ proxmox_node }}"
 
+    - name: Définir si on doit filtrer par nom
+      set_fact:
+        filter_by_name: "{{ (vm_name is defined and vm_name | trim | length > 0) | bool }}"
+        filter_by_tag: "{{ (netbox_tag is defined and netbox_tag | trim | length > 0) | bool }}"
+
     - name: Récupérer les informations depuis Netbox (par nom)
-      when: vm_name is defined and vm_name | trim | length > 0
+      when: filter_by_name | bool
       uri:
-        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?name={{ vm_name }}"
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?name={{ vm_name | trim }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
@@ -51,9 +56,9 @@
       changed_when: false
 
     - name: Récupérer les informations depuis Netbox (par tag)
-      when: (vm_name is not defined or vm_name | trim | length == 0) and (netbox_tag is defined and netbox_tag | trim | length > 0)
+      when: (not filter_by_name | bool) and (filter_by_tag | bool)
       uri:
-        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?tag={{ netbox_tag }}"
+        url: "{{ netbox_url }}/api/virtualization/virtual-machines/?tag={{ netbox_tag | trim }}"
         method: GET
         headers:
           Authorization: "Token {{ netbox_token }}"
@@ -65,10 +70,7 @@
       changed_when: false
 
     - name: Récupérer toutes les VMs depuis Netbox (sans filtre)
-      when: >
-        (vm_name is not defined or vm_name | trim | length == 0) 
-        and (netbox_tag is not defined or netbox_tag | trim | length == 0)
-        or (vm_name is defined and vm_name | trim | length == 0 and netbox_tag is not defined)
+      when: (not filter_by_name | bool) and (not filter_by_tag | bool)
       uri:
         url: "{{ netbox_url }}/api/virtualization/virtual-machines/"
         method: GET
