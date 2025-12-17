@@ -49,7 +49,6 @@
       register: netbox_vms_response
       failed_when: false
       changed_when: false
-      when: false  # Désactivé temporairement - utiliser "toutes les VMs" par défaut
 
     - name: Récupérer les informations depuis Netbox (par tag)
       when: (vm_name is not defined or vm_name | trim | length == 0) and (netbox_tag is defined and netbox_tag | trim | length > 0)
