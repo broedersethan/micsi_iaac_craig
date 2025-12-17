@@ -111,11 +111,17 @@
         netbox_protocol: "{{ 'https' if 'https://' in netbox_url else 'http' }}"
         netbox_url_parts: "{{ netbox_url.split('://')[1].split('/')[0] }}"
 
-    - name: Extraire le hostname et le port depuis les parties de l'URL
+    - name: Extraire le hostname depuis les parties de l'URL
       set_fact:
         netbox_hostname: "{{ netbox_url_parts.split(':')[0] }}"
+
+    - name: Extraire le port depuis les parties de l'URL
+      set_fact:
         netbox_port_explicit: "{{ netbox_url_parts.split(':')[1] | default('') }}"
-        netbox_port: "{{ netbox_port_explicit if netbox_port_explicit != '' else ('443' if netbox_protocol == 'https' else '80') }}"
+
+    - name: Définir le port final (explicite ou par défaut)
+      set_fact:
+        netbox_port: "{{ netbox_port_explicit if (netbox_port_explicit is defined and netbox_port_explicit != '') else ('443' if netbox_protocol == 'https' else '80') }}"
 
     - name: Construire URL Netbox finale avec IP
       set_fact:
