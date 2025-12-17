@@ -47,7 +47,8 @@
         validate_certs: no
         status_code: [200, 400]
       register: netbox_vms_response
-      failed_when: netbox_vms_response.status == 400
+      failed_when: false
+      changed_when: false
 
     - name: Récupérer les informations depuis Netbox (par tag)
       when: (vm_name is not defined or vm_name == "") and (netbox_tag is defined and netbox_tag != "")
@@ -60,7 +61,8 @@
         validate_certs: no
         status_code: [200, 400]
       register: netbox_vms_response
-      failed_when: netbox_vms_response.status == 400
+      failed_when: false
+      changed_when: false
 
     - name: Récupérer toutes les VMs depuis Netbox (sans filtre)
       when: (vm_name is not defined or vm_name == "") and (netbox_tag is not defined or netbox_tag == "")
@@ -73,16 +75,18 @@
         validate_certs: no
         status_code: 200
       register: netbox_vms_response
+      failed_when: false
+      changed_when: false
 
     - name: Afficher un message d'erreur si le tag n'existe pas
       fail:
         msg: "Le tag '{{ netbox_tag }}' n'existe pas dans Netbox. Utilisez netbox_tag: '' pour récupérer toutes les VMs ou spécifiez un tag valide."
-      when: netbox_vms_response.status == 400
+      when: netbox_vms_response.status is defined and netbox_vms_response.status == 400
 
     - name: Extraire les VMs de la réponse Netbox
       set_fact:
         netbox_vms: "{{ netbox_vms_response.json.results }}"
-      when: netbox_vms_response.status == 200
+      when: netbox_vms_response.status is defined and netbox_vms_response.status == 200 or netbox_vms_response.status is not defined
 
     - name: Vérifier que des VMs ont été trouvées
       fail:
